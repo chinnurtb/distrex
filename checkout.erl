@@ -127,9 +127,11 @@ mimic_tick(What) ->
 			mimic_tick(What, 10)
 	end.
 
-mimic_tick(What, 0) ->
+mimic_tick(_, 0) ->
+	io:format("Finishing~n", []),
 	finishing_tick;
 mimic_tick(What, N) ->
+	io:format("Tick: ~p~n", [What]),
 	tick(What),
 	receive
 	after 3000 ->
@@ -137,9 +139,7 @@ mimic_tick(What, N) ->
 	end.
 
 test() ->
-	init(),
-	testOK(0).
-
+	testOK(1).
 testOK(50) ->
 	testFail(51);
 testOK(N) ->
