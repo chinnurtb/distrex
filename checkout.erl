@@ -4,7 +4,28 @@
 -define(HEARTBEAT_MISS, 1000).
 
 init() ->
+	register(socket_loop, spawn(checkout, socket_server, [])),
 	register(broker, spawn(checkout, server, [])).
+
+socket_server() ->
+	{ok, Socket} = gen_udp:open(8789, [binary, {active,false}]),
+	socket_server(Socket).
+
+socket_server(Socket) ->
+	case gen_udp:recv(Socket, 0) of
+		{ok, {Who,Port,String}} ->
+			io:format("Who: ~p~nPort: ~p~nString: ~p~n", [Who, Port, String]),
+			case String of
+				<<"LOCK", Rest/binary>> ->
+					gen_udp:send(Socket, Who, Port, atom_to_list(reserve(Rest)));
+				<<"BEAT", Rest/binary>> ->
+					tick(Rest)
+			end,
+			socket_server(Socket);
+		Else ->
+			io:format("~p~n", [Else])
+	end.
+
 
 server() ->
 	server(dict:new(), dict:new()).
