@@ -33,7 +33,7 @@ server(CheckoutMap, HeartBeatMap) ->
 			io:format("Removing~n", []),
 			case dict:find(What, CheckoutMap) of
 				{ok, _} ->
-					server(dict:erase(What, CheckoutMap), 
+					server(dict:erase(What, CheckoutMap),
 						   dict:erase(What, HeartBeatMap)),
 					Pid ! ok;
 				error ->
@@ -94,6 +94,44 @@ heartbeat(N, What) ->
 			heartbeat(?MAX_HEARBEAT_MISSES, What)
 	after
 		?HEARTBEAT_MISS ->
-			io:format("Miss~n", []),
 			heartbeat(N-1, What)
 	end.
+
+mimic_tick(What) ->
+	tick(What),
+	receive
+	after 3000 ->
+			mimic_tick(What, 10)
+	end.
+
+mimic_tick(What, 0) ->
+	finishing_tick;
+mimic_tick(What, N) ->
+	tick(What),
+	receive
+	after 3000 ->
+			mimic_tick(What, N-1)
+	end.
+
+test() ->
+	init(),
+	testOK(0).
+
+testOK(50) ->
+	testFail(51);
+testOK(N) ->
+	reserve(N),
+	spawn(checkout, mimic_tick, [N]),
+	testOK(N+1).
+
+testFail(100) ->
+	testDenied(101);
+testFail(N) ->
+	reserve(N),
+	testFail(N+1).
+
+testDenied(150) ->
+	ok;
+testDenied(N) ->
+	io:format("~p~n", [reserve(random:uniform(50))]),
+	testDenied(N+1).
