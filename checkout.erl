@@ -60,12 +60,14 @@ server(CheckoutMap, HeartBeatMap) ->
 				error ->
 					Pid ! novalue
 			end;
-		{heartbeat, Pid} ->
-			case dict:find(Pid, HeartBeatMap) of
+		{heartbeat, What} ->
+			io:format("Got heartbeat for ~p~n", [What]),
+			case dict:find(What, HeartBeatMap) of
 				{ok, Monitor} ->
 					Monitor ! beat,
 					server(CheckoutMap, HeartBeatMap);
 				error ->
+					io:format("Missing heartbeat function~n",[]),
 					server(CheckoutMap, HeartBeatMap)
 			end;
 		restart ->
