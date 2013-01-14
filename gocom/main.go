@@ -45,6 +45,7 @@ func (d *Distrex) Unlock() {
 
 func (d *Distrex) WaitLock() {
 	for !d.Check() {
+		<-time.After(time.Second * 5)
 	}
 	d.Lock()
 }
