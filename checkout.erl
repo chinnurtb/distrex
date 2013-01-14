@@ -1,147 +1,123 @@
 -module(checkout).
--compile(export_all).
 -define(MAX_HEARBEAT_MISSES, 10).
 -define(HEARTBEAT_MISS, 1000).
+-behaviour(gen_server).
 
-init() ->
+%% gen_server behaviour
+-export([start/0,code_change/3,handle_call/3,init/1,handle_cast/2,handle_info/2,terminate/2]).
+
+%% extra
+-export([heartbeat/1, heartbeat/2]).
+
+%% Test functions
+-export([test/0, mimic_tick/1]).
+
+-include("socket.erl").
+
+start() ->
     register(socket_loop, spawn(checkout, socket_server, [])),
-    register(broker, spawn(checkout, server, [])).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-socket_server() ->
-    {ok, Socket} = gen_udp:open(8789, [binary, {active,false}]),
-    socket_server(Socket).
+init(Args) ->
+    print(Args),
+    {ok, {dict:new(), dict:new()}}.
 
-socket_server(Socket) ->
-    case gen_udp:recv(Socket, 0) of
-        {ok, {Who,Port,String}} ->
-            io:format("Who: ~p~nPort: ~p~nString: ~p~n", [Who, Port, String]),
-            case String of
-                <<"LOCK", Rest/binary>> ->
-                    sender(Socket, Who, Port, lock(Rest));
-                <<"UNLOCK", Rest/binary>> ->
-                    unlock(Rest);
-                <<"BEAT", Rest/binary>> ->
-                    tick(Rest);
-                <<"CHECK", Rest/binary>> ->
-                    sender(Socket, Who, Port, check(Rest))
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%% We don't have any specific needs for these yet but we need to over-
+%% ride them for the gen_server behaviour.
+handle_cast(_Request, State) ->
+    {noreply, State}.
+handle_info(_Message, Library) ->
+    {noreply, Library}.
+terminate(_Reason, _Library) -> ok.
+
+handle_call({check, What}, From, State) ->
+    {CheckoutMap, _ } = State,
+    io:format("Checking ~p from ~p~n", [What, From]),
+    Reply = case dict:find(What, CheckoutMap) of
+                {ok, _} ->
+                    inuse;
+                error ->
+                    free
             end,
-            socket_server(Socket);
-        Else ->
-            io:format("~p~n", [Else])
-    end.
-
-sender(Socket, Who, Port, What) ->
-    gen_udp:send(Socket, Who, Port, atom_to_list(What)).
-
-server() ->
-    server(dict:new(), dict:new()).
-server(CheckoutMap, HeartBeatMap) ->
-    receive
-        {check, Pid, What} ->
-            io:format("Checking ~p from ~p~n", [What, Pid]),
-            case dict:find(What, CheckoutMap) of
-                {ok, _} ->
-                    Pid ! inuse;
-                error ->
-                    Pid ! free
-            end,
-            server(CheckoutMap, HeartBeatMap);
-        {add, Pid, What} ->
-            io:format("Adding~n", []),
-            case dict:find(What, CheckoutMap) of
-                {ok, _} ->
-                    Pid ! denied;
-                error ->
-                    Pid ! ok,
-                    server(dict:store(What, Pid, CheckoutMap),
-                          dict:store(What, heartbeat(What), HeartBeatMap))
-            end;
-        {remove, Pid, What} ->
-            io:format("Removing~n", []),
-            case dict:find(What, CheckoutMap) of
-                {ok, _} ->
-                    Pid ! ok,
-                    server(dict:erase(What, CheckoutMap),
-                           dict:erase(What, HeartBeatMap));
-                error ->
-                    Pid ! novalue,
-                    server(CheckoutMap, HeartBeatMap)
-            end;
-        {heartbeat, What} ->
-            io:format("Got heartbeat for ~p~n", [What]),
-            case dict:find(What, HeartBeatMap) of
+    {reply, Reply, State};
+handle_call({add, What}, From, State) ->
+    {CheckoutMap, HeartBeatMap } = State,
+    io:format("Adding: ~p~n", [What]),
+    {Reply, 
+     NewCheckoutMap,
+     NewHeartBeatMap} = case dict:find(What, CheckoutMap) of
+                            {ok, _} ->
+                                {denied, CheckoutMap, HeartBeatMap};
+                            error ->
+                                {ok, dict:store(What, From, CheckoutMap),
+                                 dict:store(What, heartbeat(What), HeartBeatMap)}
+                        end,
+    {reply, Reply, {NewCheckoutMap, NewHeartBeatMap}};
+handle_call({remove, What}, _From, State) ->
+    {CheckoutMap, HeartBeatMap} = State,
+    io:format("Removing: ~p~n", [What]),
+    {Reply,
+     NewCheckoutMap,
+     NewHeartBeatMap} = case dict:find(What, CheckoutMap) of
+                            {ok, _} ->
+                                {ok, Monitor} = dict:find(What, HeartBeatMap),
+                                Monitor ! stop,
+                                {ok, dict:erase(What, CheckoutMap),
+                                 dict:erase(What, HeartBeatMap)};
+                            error ->
+                                {novalue, CheckoutMap, HeartBeatMap}
+                        end,
+    {reply, Reply, {NewCheckoutMap, NewHeartBeatMap}};
+handle_call({heartbeat, What}, _From, State) ->
+    {_CheckoutMap, HeartBeatMap} = State,
+    Reply = case dict:find(What, HeartBeatMap) of
                 {ok, Monitor} ->
-                    Monitor ! beat,
-                    server(CheckoutMap, HeartBeatMap);
+                    Monitor ! beat;
                 error ->
-                    io:format("Missing heartbeat function~n",[]),
-                    server(CheckoutMap, HeartBeatMap)
-            end;
-        restart ->
-            io:format("Restarting, reloading code...~n", []),
-            checkout:server(CheckoutMap, HeartBeatMap);
-        quit ->
-            ok
-    end.
+                    ok
+            end,
+    {reply, Reply, {_CheckoutMap, HeartBeatMap}}.
 
-restart() ->
-    broker ! restart.
-
-quit() ->
-    broker ! quit.
-
-lock(What) ->
-    broker ! {check, self(), What},
-    receive
-        inuse ->
-            inuse;
-        free ->
-            broker ! {add, self(), What},
-            receive
-                ok ->
-                    ok;
-                denied ->
-                    denied
-            end
-    end.
-
+%%%%%%%%%%%%%%%%%%
+%% Server Comms %%
+%%%%%%%%%%%%%%%%%%
 unlock(What) ->
-    broker ! {remove, self(), What},
-    receive
+    gen_server:call(?MODULE, {remove, What}).
+check(What) ->
+    gen_server:call(?MODULE, {check, What}).
+tick(What) ->
+    io:format("Receive tick~n", []),
+    gen_server:call(?MODULE, {heartbeat, What}).
+lock(What) ->
+    LockState = gen_server:call(?MODULE, {add, What}),
+    case LockState of
         ok ->
             ok;
-        novalue ->
-            novalue
+        denied ->
+            denied
     end.
-
-
-check(What) ->
-    broker ! {check, self(), What},
-    receive
-        inuse ->
-            inuse;
-        free ->
-            free
-    end.
-
-
-tick(What) ->
-    broker ! {heartbeat, What}.
 
 heartbeat(What) ->
     spawn(checkout, heartbeat, [?MAX_HEARBEAT_MISSES, What]).
 heartbeat(0, What) ->
     receive
         beat ->
-            heartbeat(?MAX_HEARBEAT_MISSES, What)
+            heartbeat(?MAX_HEARBEAT_MISSES, What);
+        stop ->
+            ok
     after
         ?HEARTBEAT_MISS ->
-            broker ! {remove, self(), What}
+            unlock(What)
     end;
 heartbeat(N, What) ->
     receive
         beat ->
-            heartbeat(?MAX_HEARBEAT_MISSES, What)
+            heartbeat(?MAX_HEARBEAT_MISSES, What);
+        stop ->
+            ok
     after
         ?HEARTBEAT_MISS ->
             heartbeat(N-1, What)
@@ -153,7 +129,6 @@ mimic_tick(What) ->
     after 3000 ->
             mimic_tick(What, 10)
     end.
-
 mimic_tick(_, 0) ->
     io:format("Finishing~n", []),
     finishing_tick;
@@ -165,6 +140,9 @@ mimic_tick(What, N) ->
             mimic_tick(What, N-1)
     end.
 
+%%%%%%%%%%%%%%%%%%
+%%  TEST CODE   %%
+%%%%%%%%%%%%%%%%%%
 test() ->
     testOK(1).
 testOK(50) ->
@@ -173,15 +151,19 @@ testOK(N) ->
     lock(N),
     spawn(checkout, mimic_tick, [N]),
     testOK(N+1).
-
 testFail(100) ->
     testDenied(101);
 testFail(N) ->
     lock(N),
     testFail(N+1).
-
 testDenied(150) ->
     ok;
 testDenied(N) ->
     io:format("~p~n", [lock(random:uniform(50))]),
     testDenied(N+1).
+
+%%%%%%%%%%%%%%%%%%
+%%  MISC CODE   %%
+%%%%%%%%%%%%%%%%%%
+print(Data) ->
+    io:format("~p~n", [Data]).
