@@ -47,7 +47,7 @@ func main() {
 		ch = heartbeat(cxn, *record)
 	} else {
 		fmt.Println("Didn't lock!")
-		fmt.Println(len(string(b)))
+		return
 	}
 	<-time.After(time.Minute)
 	ch <- true
