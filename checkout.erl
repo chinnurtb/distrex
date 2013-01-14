@@ -92,13 +92,7 @@ tick(What) ->
     io:format("Receive tick~n", []),
     gen_server:call(?MODULE, {heartbeat, What}).
 lock(What) ->
-    LockState = gen_server:call(?MODULE, {add, What}),
-    case LockState of
-        ok ->
-            ok;
-        denied ->
-            denied
-    end.
+    gen_server:call(?MODULE, {add, What}).
 
 heartbeat(What) ->
     spawn(checkout, heartbeat, [?MAX_HEARBEAT_MISSES, What]).
