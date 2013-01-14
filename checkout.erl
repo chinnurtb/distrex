@@ -17,7 +17,9 @@ socket_server(Socket) ->
             io:format("Who: ~p~nPort: ~p~nString: ~p~n", [Who, Port, String]),
             case String of
                 <<"LOCK", Rest/binary>> ->
-                    sender(Socket, Who, Port, reserve(Rest));
+                    sender(Socket, Who, Port, lock(Rest));
+                <<"UNLOCK", Rest/binary>> ->
+                    unlock(Rest);
                 <<"BEAT", Rest/binary>> ->
                     tick(Rest);
                 <<"CHECK", Rest/binary>> ->
@@ -58,11 +60,12 @@ server(CheckoutMap, HeartBeatMap) ->
             io:format("Removing~n", []),
             case dict:find(What, CheckoutMap) of
                 {ok, _} ->
+                    Pid ! ok,
                     server(dict:erase(What, CheckoutMap),
-                           dict:erase(What, HeartBeatMap)),
-                    Pid ! ok;
+                           dict:erase(What, HeartBeatMap));
                 error ->
-                    Pid ! novalue
+                    Pid ! novalue,
+                    server(CheckoutMap, HeartBeatMap)
             end;
         {heartbeat, What} ->
             io:format("Got heartbeat for ~p~n", [What]),
@@ -87,7 +90,7 @@ restart() ->
 quit() ->
     broker ! quit.
 
-reserve(What) ->
+lock(What) ->
     broker ! {check, self(), What},
     receive
         inuse ->
@@ -101,6 +104,16 @@ reserve(What) ->
                     denied
             end
     end.
+
+unlock(What) ->
+    broker ! {remove, self(), What},
+    receive
+        ok ->
+            ok;
+        novalue ->
+            novalue
+    end.
+
 
 check(What) ->
     broker ! {check, self(), What},
@@ -157,18 +170,18 @@ test() ->
 testOK(50) ->
     testFail(51);
 testOK(N) ->
-    reserve(N),
+    lock(N),
     spawn(checkout, mimic_tick, [N]),
     testOK(N+1).
 
 testFail(100) ->
     testDenied(101);
 testFail(N) ->
-    reserve(N),
+    lock(N),
     testFail(N+1).
 
 testDenied(150) ->
     ok;
 testDenied(N) ->
-    io:format("~p~n", [reserve(random:uniform(50))]),
+    io:format("~p~n", [lock(random:uniform(50))]),
     testDenied(N+1).
