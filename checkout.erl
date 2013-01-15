@@ -82,9 +82,10 @@ handle_call({heartbeat, What}, _From, State) ->
     {_CheckoutMap, HeartBeatMap} = State,
     Reply = case dict:find(What, HeartBeatMap) of
                 {ok, Monitor} ->
-                    Monitor ! beat;
+                    Monitor ! beat,
+                    ok;
                 error ->
-                    ok
+                    error
             end,
     {reply, Reply, {_CheckoutMap, HeartBeatMap}};
 handle_call({state}, _From, State) ->
@@ -98,7 +99,6 @@ unlock(What) ->
 check(What) ->
     gen_server:call(?MODULE, {check, What}).
 tick(What) ->
-    io:format("Receive tick~n", []),
     gen_server:call(?MODULE, {heartbeat, What}).
 lock(What) ->
     gen_server:call(?MODULE, {add, What}).
