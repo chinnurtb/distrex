@@ -64,17 +64,9 @@ class GUI(QtGui.QMainWindow):
             self.gui.tableWidget.setItem(x, 1, QtGui.QTableWidgetItem(str(value[0])))
             self.gui.tableWidget.setItem(x, 2, QtGui.QTableWidgetItem(str(value[1].state)))
             x += 1
+
     def do_beat(self, what):
         self.socket.send("BEAT%s" % what)
-
-    def changeTable(self):
-        pass
-    def openConnectionDialog(self):
-        pass
-    def storeCell(self):
-        pass
-    def openManageDialog(self):
-        pass
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
