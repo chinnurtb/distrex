@@ -9,6 +9,9 @@
 %% extra
 -export([heartbeat/1, heartbeat/2]).
 
+%% API
+-export([unlock/1,check/1,tick/1,lock/1,state/0]).
+
 %% Test functions
 -export([test/0, mimic_tick/1]).
 
@@ -48,7 +51,7 @@ handle_call({check, What}, From, State) ->
 handle_call({add, What}, From, State) ->
     {CheckoutMap, HeartBeatMap } = State,
     io:format("Adding: ~p~n", [What]),
-    {Reply, 
+    {Reply,
      NewCheckoutMap,
      NewHeartBeatMap} = case dict:find(What, CheckoutMap) of
                             {ok, _} ->
@@ -83,7 +86,9 @@ handle_call({heartbeat, What}, _From, State) ->
                 error ->
                     ok
             end,
-    {reply, Reply, {_CheckoutMap, HeartBeatMap}}.
+    {reply, Reply, {_CheckoutMap, HeartBeatMap}};
+handle_call({state}, _From, State) ->
+    {reply, State, State}.
 
 %%%%%%%%%%%%%%%%%%
 %% Server Comms %%
@@ -97,6 +102,9 @@ tick(What) ->
     gen_server:call(?MODULE, {heartbeat, What}).
 lock(What) ->
     gen_server:call(?MODULE, {add, What}).
+state() ->
+    gen_server:call(?MODULE, {state}).
+
 
 heartbeat(What) ->
     spawn(checkout, heartbeat, [?MAX_HEARBEAT_MISSES, What]).
