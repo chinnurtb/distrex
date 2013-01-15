@@ -51,21 +51,19 @@ class GUI(QtGui.QMainWindow):
     def flush(self):
         try:
             while True:
-                print self.socket.recv(1024)
+                self.socket.recv(1024)
         except socket.timeout:
             pass
 
     def unlock(self):
-        print "unlocking..."
         self.flush()
         for k, v in self.heartbeats.items():
             self.unlock_resource(k)
         self.display_state()
 
     def lock(self):
-        print "locking..."
         self.flush()
-        for x in range(1000):
+        for x in range(100):
             self.lock_resource(x)
         self.display_state()
 
@@ -83,13 +81,19 @@ class GUI(QtGui.QMainWindow):
                 self.heartbeats[what] = (t, LockState(what, True))
             else:
                 print "unable to lock: %s" % what
+        elif resp == "inuse":
+            self.heartbeats[what] = (None, LockState(what, False))
         else:
             print "unable to lock: %s / %s " % (what, resp)
 
     def unlock_resource(self, what):
         if not self.heartbeats.get(what):
             return
-        t = self.heartbeats[what][0]
+        if self.heartbeats[what][0]:
+            t = self.heartbeats[what][0]
+        else:
+            self.heartbeats.pop(what)
+            return
         self.connect(t, SIGNAL("finished()"), lambda what=what: self.removeHeartbeat(what))
         t.setFinished()
 
@@ -106,7 +110,15 @@ class GUI(QtGui.QMainWindow):
             self.gui.tableWidget.insertRow(x)
             self.gui.tableWidget.setItem(x, 0, QtGui.QTableWidgetItem(str(key)))
             self.gui.tableWidget.setItem(x, 1, QtGui.QTableWidgetItem(str(value[0])))
-            self.gui.tableWidget.setItem(x, 2, QtGui.QTableWidgetItem(str(value[1].state)))
+
+            tableitem = QtGui.QTableWidgetItem(
+                    "Locked" if value[1].state else "Read-Only"
+                    )
+            brush = QtGui.QBrush()
+            brush.setColor(9 if value[1].state else 7)
+            tableitem.setBackground(brush)
+            tableitem.setForeground(brush)
+            self.gui.tableWidget.setItem(x, 2, tableitem)
             x += 1
 
     def do_beat(self, what):
