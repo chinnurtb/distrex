@@ -47,13 +47,15 @@ class GUI(QtGui.QMainWindow):
         resp = self.socket.recv(1024)
         if resp == "free":
             self.socket.send("LOCK%s" % what)
-            if  self.socket.recv(1024) == "ok":
+            if self.socket.recv(1024) == "ok":
                 t = Heartbeat(what)
                 QObject.connect(t, SIGNAL('beat'), self.do_beat, QtCore.Qt.QueuedConnection)
                 t.start()
                 self.heartbeats[what] = (t, LockState(what, True))
             else:
-                print "unable to lock!"
+                print "unable to lock: %s" % what
+        else:
+            print "unable to lock: %s" % what
 
     def display_state(self):
         items = self.heartbeats.items()
