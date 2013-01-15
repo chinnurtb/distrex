@@ -1,12 +1,3 @@
-# -*- coding: utf-8 -*-
-
-# Form implementation generated from reading ui file 'mainwindow.ui'
-#
-# Created: Fri Jun 29 12:57:49 2012
-#      by: PyQt4 UI code generator 4.9.1
-#
-# WARNING! All changes made in this file will be lost!
-
 from PyQt4 import QtCore, QtGui
 
 try:
@@ -26,11 +17,19 @@ class Ui_MainWindow(object):
         self.tableWidget.setColumnCount(3)
         self.tableWidget.setObjectName(_fromUtf8("tableWidget"))
         self.tableWidget.setRowCount(0)
+        self.LockButton = QtGui.QPushButton(self.centralwidget)
+        self.LockButton.setText("Lock")
+        self.UnlockButton = QtGui.QPushButton(self.centralwidget)
+        self.UnlockButton.setText("Unlock")
         self.gridLayout.addWidget(self.tableWidget, 0, 0, 1, 1)
+        self.gridLayout.addWidget(self.LockButton, 2, 2, 2, 2)
+        self.gridLayout.addWidget(self.UnlockButton, 2, 1, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+        QtCore.QObject.connect(self.LockButton, QtCore.SIGNAL("clicked()"), MainWindow.lock)
+        QtCore.QObject.connect(self.UnlockButton, QtCore.SIGNAL("clicked()"), MainWindow.unlock)
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QtGui.QApplication.translate("MainWindow", "Distrex PyQt tester", None, QtGui.QApplication.UnicodeUTF8))

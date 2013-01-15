@@ -13,11 +13,21 @@ class Heartbeat(QtCore.QThread):
     def __init__(self, resource_id):
         QtCore.QThread.__init__(self)
         self.resource_id = resource_id
+        self.time_to_quit = False
+        self.lock = QtCore.QMutex()
 
     def run(self):
-        while 1:
+        while self.isAlive():
             self.emit(SIGNAL('beat'), "%s" % self.resource_id)
             time.sleep(3)
+
+    def isAlive(self):
+        return not self.time_to_quit
+
+    def setFinished(self):
+        self.lock.lock()
+        self.time_to_quit = True
+        self.lock.unlock()
 
     def __str__(self):
         return "%s - %s" % (self.isRunning(), self.resource_id)
@@ -31,18 +41,37 @@ class GUI(QtGui.QMainWindow):
     def __init__(self, parent=None):
         QtGui.QMainWindow.__init__(self, parent)
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.socket.settimeout(1)
         self.socket.connect(("127.0.0.1", 8789))
         self.gui = Ui_MainWindow()
         self.gui.setupUi(self)
         self.heartbeats = {}
-        for x in range(10):
-            self.lock_resource(random.choice(range(10)))
+        self.display_state()
+
+    def flush(self):
+        try:
+            while True:
+                print self.socket.recv(1024)
+        except socket.timeout:
+            pass
+
+    def unlock(self):
+        print "unlocking..."
+        self.flush()
+        for k, v in self.heartbeats.items():
+            self.unlock_resource(k)
+        self.display_state()
+
+    def lock(self):
+        print "locking..."
+        self.flush()
+        for x in range(1000):
+            self.lock_resource(x)
         self.display_state()
 
     def lock_resource(self, what):
         if self.heartbeats.get(what):
-            return            
-        self.heartbeats[what] = (None, LockState(what, False))
+            return
         self.socket.send("CHECK%s" % what)
         resp = self.socket.recv(1024)
         if resp == "free":
@@ -55,9 +84,22 @@ class GUI(QtGui.QMainWindow):
             else:
                 print "unable to lock: %s" % what
         else:
-            print "unable to lock: %s" % what
+            print "unable to lock: %s / %s " % (what, resp)
+
+    def unlock_resource(self, what):
+        if not self.heartbeats.get(what):
+            return
+        t = self.heartbeats[what][0]
+        self.connect(t, SIGNAL("finished()"), lambda what=what: self.removeHeartbeat(what))
+        t.setFinished()
+
+    def removeHeartbeat(self, what):
+        self.heartbeats.pop(what)
+        self.socket.send("UNLOCK%s" % what)
+        self.display_state()
 
     def display_state(self):
+        self.clearTable()
         items = self.heartbeats.items()
         x = 0
         for (key, value) in items:
@@ -69,6 +111,9 @@ class GUI(QtGui.QMainWindow):
 
     def do_beat(self, what):
         self.socket.send("BEAT%s" % what)
+
+    def clearTable(self):
+        self.gui.tableWidget.setRowCount(0)
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
