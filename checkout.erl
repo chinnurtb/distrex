@@ -33,6 +33,7 @@ handle_info(_Message, Library) ->
     {noreply, Library}.
 terminate(_Reason, _Library) -> ok.
 
+%% Tells the client if the What is locked
 handle_call({check, What}, From, State) ->
     {CheckoutMap, _ } = State,
     io:format("Checking ~p from ~p~n", [What, From]),
@@ -43,6 +44,7 @@ handle_call({check, What}, From, State) ->
                     free
             end,
     {reply, Reply, State};
+%% Locks a resource and assigns it to the client
 handle_call({add, What}, From, State) ->
     {CheckoutMap, HeartBeatMap } = State,
     io:format("Adding: ~p~n", [What]),
@@ -56,6 +58,7 @@ handle_call({add, What}, From, State) ->
                                  dict:store(What, heartbeat(What), HeartBeatMap)}
                         end,
     {reply, Reply, {NewCheckoutMap, NewHeartBeatMap}};
+%% Unlocks a resource
 handle_call({remove, What}, _From, State) ->
     {CheckoutMap, HeartBeatMap} = State,
     io:format("Removing: ~p~n", [What]),
@@ -71,6 +74,7 @@ handle_call({remove, What}, _From, State) ->
                                 {novalue, CheckoutMap, HeartBeatMap}
                         end,
     {reply, Reply, {NewCheckoutMap, NewHeartBeatMap}};
+%% Sends a tick to the heartbeat monitor for the locked resource
 handle_call({heartbeat, What}, _From, State) ->
     {_CheckoutMap, HeartBeatMap} = State,
     Reply = case dict:find(What, HeartBeatMap) of
