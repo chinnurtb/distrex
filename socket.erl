@@ -7,16 +7,18 @@ socket_server() ->
 socket_server(Socket) ->
     case gen_udp:recv(Socket, 0) of
         {ok, {Who,Port,String}} ->
-            io:format("Who: ~p~nPort: ~p~nString: ~p~n", [Who, Port, String]),
+            io:format("CMD: ~p~n", [String]),
             case String of
                 <<"LOCK", Rest/binary>> ->
                     sender(Socket, Who, Port, lock(Rest));
                 <<"UNLOCK", Rest/binary>> ->
-                    unlock(Rest);
+                    sender(Socket, Who, Port, unlock(Rest));
                 <<"BEAT", Rest/binary>> ->
                     tick(Rest);
                 <<"CHECK", Rest/binary>> ->
-                    sender(Socket, Who, Port, check(Rest))
+                    sender(Socket, Who, Port, check(Rest));
+                Else ->
+                    io:format("~p~n", [Else])
             end,
             socket_server(Socket);
         Else ->
@@ -24,5 +26,4 @@ socket_server(Socket) ->
     end.
 
 sender(Socket, Who, Port, What) ->
-    print(What),
     gen_udp:send(Socket, Who, Port, atom_to_list(What)).
