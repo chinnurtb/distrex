@@ -7,7 +7,7 @@ import random
 from PyQt4 import QtCore, QtGui
 from PyQt4.QtCore import SIGNAL, QObject
 
-from freepoint.ui.mainwindow_UI import Ui_MainWindow
+from mainwindow_UI import Ui_MainWindow
 
 class Heartbeat(QtCore.QThread):
     def __init__(self, resource_id):
@@ -18,6 +18,9 @@ class Heartbeat(QtCore.QThread):
         while 1:
             self.emit(SIGNAL('beat'), "%s" % self.resource_id)
             time.sleep(3)
+
+    def __str__(self):
+        return "%s - %s" % (self.isRunning(), self.resource_id)
 
 class LockState(object):
     def __init__(self, resource_id, state):
@@ -53,13 +56,14 @@ class GUI(QtGui.QMainWindow):
                 print "unable to lock!"
 
     def display_state(self):
-        for key, value in self.heartbeats.items():
-            self.gui.tableWidget.insertRow(self.gui.tableWidget.rowCount())
-            self.gui.tableWidget.setItem(self.gui.tableWidget.rowCount() -1, 0,
-                                         QtGui.QTableWidgetItem(str(key)))
-            self.gui.tableWidget.setItem(self.gui.tableWidget.rowCount() -1, 1,
-                                         QtGui.QTableWidgetItem(str(value[1].state)))
-
+        items = self.heartbeats.items()
+        x = 0
+        for (key, value) in items:
+            self.gui.tableWidget.insertRow(x)
+            self.gui.tableWidget.setItem(x, 0, QtGui.QTableWidgetItem(str(key)))
+            self.gui.tableWidget.setItem(x, 1, QtGui.QTableWidgetItem(str(value[0])))
+            self.gui.tableWidget.setItem(x, 2, QtGui.QTableWidgetItem(str(value[1].state)))
+            x += 1
     def do_beat(self, what):
         self.socket.send("BEAT%s" % what)
 
