@@ -180,6 +180,6 @@ void* heartbeat(void* resource) {
             free(buf);
             return NULL;
         }
-        sleep(3);
+        sleep(SPINWAIT);
     }
 }
