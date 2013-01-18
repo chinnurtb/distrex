@@ -26,6 +26,7 @@ void* heartbeat(void* resource) {
     int len, len2;
     char* buf;
     char* buf2;
+
     struct Connection* cxn;
 
     cxn = (struct Connection*) resource;
@@ -63,12 +64,14 @@ void* heartbeat(void* resource) {
 
 int main(int argc, char* argv[]) {
     int sfd;
-    char* buf;
     int rc;
+    int holdtime = 0;
+
+    char* buf;
+    char* rsrc;
 
     pthread_t heartbeatthread;
     pthread_mutex_t mutex;
-
 
     if (pthread_mutex_init(&mutex, NULL) != 0) {
         perror("Couldn't initialize lock: ");
@@ -78,11 +81,17 @@ int main(int argc, char* argv[]) {
     struct Connection cxn;
     struct sockaddr_in server;
 
-    if (argc < 2)
+    if (argc < 2) {
         buf = "LOCK1";
-    else
-        buf = argv[1];
+        rsrc = "1";
+    } else if (argc >= 2) {
+        buf = malloc(strlen("LOCK") + strlen(argv[1]));
+        sprintf(buf, "LOCK%s", argv[1]);
+        rsrc = argv[1];
+    }
 
+    if (argc >= 3)
+        holdtime = atoi(argv[2]);
 
     // Create and zero out our buffer.
     char recvbuf[BUFSIZE];
@@ -103,7 +112,7 @@ int main(int argc, char* argv[]) {
     /* Create our connection */
     cxn.SocketFD = sfd;
     cxn.server = (struct sockaddr*) &server;
-    cxn.resource = "1";
+    cxn.resource = rsrc;
     cxn.mutex = &mutex;
     cxn.close = 0;
 
@@ -120,7 +129,7 @@ int main(int argc, char* argv[]) {
     }
 
     /* Sleep for a while to simulate other work */
-    sleep(10);
+    sleep(holdtime);
 
     /* Lock our mutex and set the close to 1 to indicate we're done
      * with the resource.
