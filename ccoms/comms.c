@@ -22,50 +22,12 @@ struct Connection {
     int close;
 };
 
-void* heartbeat(void* resource) {
-    int len, len2;
-    char* buf;
-    char* buf2;
-
-    struct Connection* cxn;
-
-    cxn = (struct Connection*) resource;
-    if (cxn == NULL)
-        return NULL;
-
-    buf = malloc(strlen("BEAT") + strlen(cxn->resource));
-    buf2 = malloc(strlen("UNLOCK") + strlen(cxn->resource));
-
-    if (buf == NULL || buf2 == NULL)
-        return NULL;
-
-    len = sprintf(buf, "BEAT%s", cxn->resource);
-    len2 = sprintf(buf2, "UNLOCK%s", cxn->resource);
-
-    while (1) {
-        puts("heartbeat");
-        pthread_mutex_lock(cxn->mutex);
-        if (cxn->close) {
-            if (sendto(cxn->SocketFD, buf2, len2, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
-                free(buf);
-                return NULL;
-            }
-            free(buf);
-            return NULL;
-        }
-        pthread_mutex_unlock(cxn->mutex);
-        if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
-            free(buf);
-            return NULL;
-        }
-        sleep(3);
-    }
-}
+void* heartbeat(void* resource);
 
 int main(int argc, char* argv[]) {
     int sfd;
     int rc;
-    int holdtime = 0;
+    int holdtime = 10;
 
     char* buf;
     char* rsrc;
@@ -128,6 +90,9 @@ int main(int argc, char* argv[]) {
         if (strcmp(recvbuf, "ok") == 0) {
             rc = pthread_create(&heartbeatthread, NULL,  heartbeat, (void *) &cxn);
             assert(rc == 0);
+        } else {
+            puts("Did not acquire the lock");
+            exit(1);
         }
     }
 
@@ -157,4 +122,44 @@ int main(int argc, char* argv[]) {
         providing I can wrap it for Windows, too.
     */
     return 0;
+}
+
+void* heartbeat(void* resource) {
+    int len, len2;
+    char* buf;
+    char* buf2;
+
+    struct Connection* cxn;
+
+    cxn = (struct Connection*) resource;
+    if (cxn == NULL)
+        return NULL;
+
+    buf = malloc(strlen("BEAT") + strlen(cxn->resource));
+    buf2 = malloc(strlen("UNLOCK") + strlen(cxn->resource));
+
+    if (buf == NULL || buf2 == NULL)
+        return NULL;
+
+    len = sprintf(buf, "BEAT%s", cxn->resource);
+    len2 = sprintf(buf2, "UNLOCK%s", cxn->resource);
+
+    while (1) {
+        puts("heartbeat");
+        pthread_mutex_lock(cxn->mutex);
+        if (cxn->close) {
+            if (sendto(cxn->SocketFD, buf2, len2, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
+                free(buf);
+                return NULL;
+            }
+            free(buf);
+            return NULL;
+        }
+        pthread_mutex_unlock(cxn->mutex);
+        if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
+            free(buf);
+            return NULL;
+        }
+        sleep(3);
+    }
 }
