@@ -14,6 +14,10 @@
 #define BUFSIZE 1024
 #endif
 
+#ifndef SPINWAIT
+#define SPINWAIT 3
+#endif
+
 #define bool int
 #define true 1
 #define false 0
@@ -30,6 +34,7 @@ struct Connection {
 };
 
 bool Lock(struct Connection* cxn);
+void Spinlock(struct Connection* cxn);
 void Unlock(struct Connection* cxn);
 void* heartbeat(void* resource);
 
@@ -85,7 +90,8 @@ int main(int argc, char* argv[]) {
     cxn.heartbeatthread = &heartbeatthread;
 
     /* Lock our resource */
-    Lock(&cxn);
+    if (!Lock(&cxn))
+        Spinlock(&cxn);
     /* Sleep for a while to simulate other work */
     sleep(holdtime);
     /* Unlock our resource */
@@ -114,6 +120,12 @@ bool Lock(struct Connection* cxn) {
             return false;
     } else {
         return false;
+    }
+}
+
+void Spinlock(struct Connection* cxn) {
+    while (!Lock(cxn)) {
+        sleep(SPINWAIT);
     }
 }
 
