@@ -81,6 +81,9 @@ int main(int argc, char* argv[]) {
     struct Connection cxn;
     struct sockaddr_in server;
 
+    /* get our command line arguments in order. This should probably
+     * be using getopt or whatever.
+     */
     if (argc < 2) {
         buf = "LOCK1";
         rsrc = "1";
