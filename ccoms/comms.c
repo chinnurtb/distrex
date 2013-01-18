@@ -8,12 +8,53 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifndef BUFSIZE
+#define BUFSIZE 1024
+#endif
+
+struct Connection {
+    int SocketFD;
+    char* resource;
+    struct sockaddr* server;
+};
+
+void* heartbeat(void* resource) {
+    int len;
+    char* buf;
+    struct Connection* cxn;
+
+    cxn = (struct Connection*) resource;
+    if (cxn == NULL)
+        return NULL;
+
+    buf = malloc(strlen("BEAT") + strlen(cxn->resource));
+    if (buf == NULL)
+        return NULL;
+
+    len = sprintf(buf, "BEAT%s", cxn->resource);
+    while (1) {
+        if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
+            free(buf);
+            return NULL;
+        }
+        sleep(3);
+    }
+}
 
 int main(int argc, char* argv[]) {
 	int sfd;
+	char* buf;
+    struct Connection cxn;
 	struct sockaddr_in server;
+    if (argc < 2)
+        buf = "LOCK1";
+    else
+        buf = argv[1];
 
-	char* buf = "LOCK1";
+
+    // Create and zero out our buffer.
+    char recvbuf[BUFSIZE];
+    memset(&recvbuf, '\0', sizeof(recvbuf));
 
 	/* Create a fd for our socket */
 	if ((sfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
@@ -27,10 +68,22 @@ int main(int argc, char* argv[]) {
 	server.sin_port = htons(8789);
 	server.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-	/* send our message */
-	if (sendto(sfd, buf, 6, 0, (struct sockaddr*) &server, sizeof(struct sockaddr)) == -1)
-		perror("Send to didn't succeed");
+    /* Create our connection */
+    cxn.SocketFD = sfd;
+    cxn.server = (struct sockaddr*) &server;
+    cxn.resource = "1";
 
+	/* send our message */
+	if (sendto(cxn.SocketFD, buf, strlen(buf), 0, cxn.server, sizeof(struct sockaddr)) == -1)
+		perror("Sending failed: ");
+    if (recvfrom(sfd, recvbuf, BUFSIZE, 0, NULL, NULL) == -1)
+        perror("Receiving failed: ");
+    else {
+        /* This should be threaded */
+        if (strcmp(recvbuf, "ok") == 0) {
+            heartbeat((void *) &cxn);
+        }
+    }
 
 	/*
 	  TODO
