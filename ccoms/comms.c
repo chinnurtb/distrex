@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
     if (argc >= 3)
         holdtime = atoi(argv[2]);
 
-    // Create and zero out our buffer.
+    /* Create and zero out our buffer. */
     char recvbuf[BUFSIZE];
     memset(&recvbuf, '\0', sizeof(recvbuf));
 
