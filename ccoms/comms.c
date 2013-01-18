@@ -42,10 +42,10 @@ void* heartbeat(void* resource) {
 }
 
 int main(int argc, char* argv[]) {
-	int sfd;
-	char* buf;
+    int sfd;
+    char* buf;
     struct Connection cxn;
-	struct sockaddr_in server;
+    struct sockaddr_in server;
     if (argc < 2)
         buf = "LOCK1";
     else
@@ -56,26 +56,26 @@ int main(int argc, char* argv[]) {
     char recvbuf[BUFSIZE];
     memset(&recvbuf, '\0', sizeof(recvbuf));
 
-	/* Create a fd for our socket */
-	if ((sfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
-		perror("Error creating socket");
-		exit(1);
-	}
+    /* Create a fd for our socket */
+    if ((sfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        perror("Error creating socket");
+        exit(1);
+    }
 
-	/* Create our server addr */
-	memset(&server, 0, sizeof(struct sockaddr_in));
-	server.sin_family = AF_INET;
-	server.sin_port = htons(8789);
-	server.sin_addr.s_addr = inet_addr("127.0.0.1");
+    /* Create our server addr */
+    memset(&server, 0, sizeof(struct sockaddr_in));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(8789);
+    server.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     /* Create our connection */
     cxn.SocketFD = sfd;
     cxn.server = (struct sockaddr*) &server;
     cxn.resource = "1";
 
-	/* send our message */
-	if (sendto(cxn.SocketFD, buf, strlen(buf), 0, cxn.server, sizeof(struct sockaddr)) == -1)
-		perror("Sending failed: ");
+    /* send our message */
+    if (sendto(cxn.SocketFD, buf, strlen(buf), 0, cxn.server, sizeof(struct sockaddr)) == -1)
+        perror("Sending failed: ");
     if (recvfrom(sfd, recvbuf, BUFSIZE, 0, NULL, NULL) == -1)
         perror("Receiving failed: ");
     else {
@@ -85,18 +85,18 @@ int main(int argc, char* argv[]) {
         }
     }
 
-	/*
-	  TODO
+    /*
+      TODO
 
-	  So far this file is a placeholder to remind me to implement the
-	  distrex api in a C client.
+      So far this file is a placeholder to remind me to implement the
+      distrex api in a C client.
 
-	  We need:-
+      We need:-
 
-	  * Possibly a type to represent an async'd heartbeat
-	  * Wrap the nasty socket stuff up in a nice local api, maybe I can
-		borrow the nice code from the Linux Programming Interface Book
-		providing I can wrap it for Windows, too.
-	*/
-	return 0;
+      * Possibly a type to represent an async'd heartbeat
+      * Wrap the nasty socket stuff up in a nice local api, maybe I can
+        borrow the nice code from the Linux Programming Interface Book
+        providing I can wrap it for Windows, too.
+    */
+    return 0;
 }
