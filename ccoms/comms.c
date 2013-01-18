@@ -14,44 +14,46 @@
 #define BUFSIZE 1024
 #endif
 
+#define bool int
+#define true 1
+#define false 0
+
 struct Connection {
     int SocketFD;
     char* resource;
+    bool close;
+
     struct sockaddr* server;
     pthread_mutex_t* mutex;
-    int close;
+    pthread_t* heartbeatthread;
+
 };
 
+bool Lock(struct Connection* cxn);
+void Unlock(struct Connection* cxn);
 void* heartbeat(void* resource);
 
 int main(int argc, char* argv[]) {
     int sfd;
-    int rc;
     int holdtime = 10;
-
-    char* buf;
     char* rsrc;
 
     pthread_t heartbeatthread;
     pthread_mutex_t mutex;
+    struct Connection cxn;
+    struct sockaddr_in server;
 
     if (pthread_mutex_init(&mutex, NULL) != 0) {
         perror("Couldn't initialize lock: ");
         exit(1);
     }
 
-    struct Connection cxn;
-    struct sockaddr_in server;
-
     /* get our command line arguments in order. This should probably
      * be using getopt or whatever.
      */
     if (argc < 2) {
-        buf = "LOCK1";
         rsrc = "1";
     } else if (argc >= 2) {
-        buf = malloc(strlen("LOCK") + strlen(argv[1]));
-        sprintf(buf, "LOCK%s", argv[1]);
         rsrc = argv[1];
     }
 
@@ -79,49 +81,51 @@ int main(int argc, char* argv[]) {
     cxn.server = (struct sockaddr*) &server;
     cxn.resource = rsrc;
     cxn.mutex = &mutex;
-    cxn.close = 0;
+    cxn.close = false;
+    cxn.heartbeatthread = &heartbeatthread;
 
-    /* send our message */
-    if (sendto(cxn.SocketFD, buf, strlen(buf), 0, cxn.server, sizeof(struct sockaddr)) == -1)
-        perror("Sending failed: ");
-    if (recvfrom(sfd, recvbuf, BUFSIZE, 0, NULL, NULL) == -1)
-        perror("Receiving failed: ");
-    else {
-        if (strcmp(recvbuf, "ok") == 0) {
-            rc = pthread_create(&heartbeatthread, NULL,  heartbeat, (void *) &cxn);
-            assert(rc == 0);
-        } else {
-            puts("Did not acquire the lock");
-            exit(1);
-        }
-    }
-
+    /* Lock our resource */
+    Lock(&cxn);
     /* Sleep for a while to simulate other work */
     sleep(holdtime);
+    /* Unlock our resource */
+    Unlock(&cxn);
+    return 0;
+}
 
+bool Lock(struct Connection* cxn) {
+    /* send our message */
+    int len;
+    char* buf;
+    char recvbuf[BUFSIZE];
+    memset(&recvbuf, '\0', sizeof(recvbuf));
+
+    buf = malloc(sizeof("LOCK") + strlen(cxn->resource));
+    len = sprintf(buf, "LOCK%s", cxn->resource);
+
+    if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1)
+        return false;
+    if (recvfrom(cxn->SocketFD, recvbuf, BUFSIZE, 0, NULL, NULL) == -1)
+        return false;
+    if (strcmp(recvbuf, "ok") == 0) {
+        if (pthread_create(cxn->heartbeatthread, NULL, heartbeat, (void *) cxn) == 0)
+            return true;
+        else
+            return false;
+    } else {
+        return false;
+    }
+}
+
+void Unlock(struct Connection* cxn) {
     /* Lock our mutex and set the close to 1 to indicate we're done
      * with the resource.
      */
-    pthread_mutex_lock(cxn.mutex);
-    cxn.close = 1;
-    pthread_mutex_unlock(cxn.mutex);
-
+    pthread_mutex_lock(cxn->mutex);
+    cxn->close = true;
+    pthread_mutex_unlock(cxn->mutex);
     /* Wait for our thread to join and then return */
-    pthread_join(heartbeatthread, NULL);
-    /*
-      TODO
-
-      So far this file is a placeholder to remind me to implement the
-      distrex api in a C client.
-
-      We need:-
-
-      * Possibly a type to represent an async'd heartbeat
-      * Wrap the nasty socket stuff up in a nice local api, maybe I can
-        borrow the nice code from the Linux Programming Interface Book
-        providing I can wrap it for Windows, too.
-    */
-    return 0;
+    pthread_join(*(cxn->heartbeatthread), NULL);
 }
 
 void* heartbeat(void* resource) {
@@ -135,6 +139,11 @@ void* heartbeat(void* resource) {
     if (cxn == NULL)
         return NULL;
 
+    if (cxn->resource == NULL) {
+        puts("null");
+        return NULL;
+    }
+
     buf = malloc(strlen("BEAT") + strlen(cxn->resource));
     buf2 = malloc(strlen("UNLOCK") + strlen(cxn->resource));
 
@@ -145,7 +154,6 @@ void* heartbeat(void* resource) {
     len2 = sprintf(buf2, "UNLOCK%s", cxn->resource);
 
     while (1) {
-        puts("heartbeat");
         pthread_mutex_lock(cxn->mutex);
         if (cxn->close) {
             if (sendto(cxn->SocketFD, buf2, len2, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
