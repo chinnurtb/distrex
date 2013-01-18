@@ -1,11 +1,13 @@
+#include <arpa/inet.h>
+#include <assert.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <netdb.h>
-#include <string.h>
-#include <stdlib.h>
 #include <unistd.h>
 
 #ifndef BUFSIZE
@@ -16,11 +18,14 @@ struct Connection {
     int SocketFD;
     char* resource;
     struct sockaddr* server;
+    pthread_mutex_t* mutex;
+    int close;
 };
 
 void* heartbeat(void* resource) {
-    int len;
+    int len, len2;
     char* buf;
+    char* buf2;
     struct Connection* cxn;
 
     cxn = (struct Connection*) resource;
@@ -28,11 +33,26 @@ void* heartbeat(void* resource) {
         return NULL;
 
     buf = malloc(strlen("BEAT") + strlen(cxn->resource));
-    if (buf == NULL)
+    buf2 = malloc(strlen("UNLOCK") + strlen(cxn->resource));
+
+    if (buf == NULL || buf2 == NULL)
         return NULL;
 
     len = sprintf(buf, "BEAT%s", cxn->resource);
+    len2 = sprintf(buf2, "UNLOCK%s", cxn->resource);
+
     while (1) {
+        puts("heartbeat");
+        pthread_mutex_lock(cxn->mutex);
+        if (cxn->close) {
+            if (sendto(cxn->SocketFD, buf2, len2, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
+                free(buf);
+                return NULL;
+            }
+            free(buf);
+            return NULL;
+        }
+        pthread_mutex_unlock(cxn->mutex);
         if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
             free(buf);
             return NULL;
@@ -44,8 +64,20 @@ void* heartbeat(void* resource) {
 int main(int argc, char* argv[]) {
     int sfd;
     char* buf;
+    int rc;
+
+    pthread_t heartbeatthread;
+    pthread_mutex_t mutex;
+
+
+    if (pthread_mutex_init(&mutex, NULL) != 0) {
+        perror("Couldn't initialize lock: ");
+        exit(1);
+    }
+
     struct Connection cxn;
     struct sockaddr_in server;
+
     if (argc < 2)
         buf = "LOCK1";
     else
@@ -72,6 +104,8 @@ int main(int argc, char* argv[]) {
     cxn.SocketFD = sfd;
     cxn.server = (struct sockaddr*) &server;
     cxn.resource = "1";
+    cxn.mutex = &mutex;
+    cxn.close = 0;
 
     /* send our message */
     if (sendto(cxn.SocketFD, buf, strlen(buf), 0, cxn.server, sizeof(struct sockaddr)) == -1)
@@ -79,12 +113,24 @@ int main(int argc, char* argv[]) {
     if (recvfrom(sfd, recvbuf, BUFSIZE, 0, NULL, NULL) == -1)
         perror("Receiving failed: ");
     else {
-        /* This should be threaded */
         if (strcmp(recvbuf, "ok") == 0) {
-            heartbeat((void *) &cxn);
+            rc = pthread_create(&heartbeatthread, NULL,  heartbeat, (void *) &cxn);
+            assert(rc == 0);
         }
     }
 
+    /* Sleep for a while to simulate other work */
+    sleep(10);
+
+    /* Lock our mutex and set the close to 1 to indicate we're done
+     * with the resource.
+     */
+    pthread_mutex_lock(cxn.mutex);
+    cxn.close = 1;
+    pthread_mutex_unlock(cxn.mutex);
+
+    /* Wait for our thread to join and then return */
+    pthread_join(heartbeatthread, NULL);
     /*
       TODO
 
