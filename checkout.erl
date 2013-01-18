@@ -55,8 +55,10 @@ handle_call({add, What}, From, State) ->
      NewCheckoutMap,
      NewHeartBeatMap} = case dict:find(What, CheckoutMap) of
                             {ok, _} ->
+                                io:format("Already exists: ~p~n", [What]),
                                 {denied, CheckoutMap, HeartBeatMap};
                             error ->
+                                io:format("Added: ~p~n", [What]),
                                 {ok, dict:store(What, From, CheckoutMap),
                                  dict:store(What, heartbeat(What), HeartBeatMap)}
                         end,
@@ -85,6 +87,7 @@ handle_call({heartbeat, What}, _From, State) ->
                     Monitor ! beat,
                     ok;
                 error ->
+                    io:format("Tick for untracked resource~n", []),
                     error
             end,
     {reply, Reply, {_CheckoutMap, HeartBeatMap}};
