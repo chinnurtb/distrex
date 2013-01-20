@@ -2,13 +2,22 @@
 #include <assert.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+/* When GLIBC gets updated we can move to the C11 thread library
+ * defined in there. Until then... pthreads.
+ */
+
+#if __STDC_VERSION__ == 201112L
+  #include <pthread.h>
+#else
+  #include <pthread.h>
+#endif
 
 #ifndef BUFSIZE
 #define BUFSIZE 1024
@@ -101,16 +110,21 @@ int main(int argc, char* argv[]) {
 
 bool Lock(struct Connection* cxn) {
     /* send our message */
-    int len;
+    size_t len;
     char* buf;
     char recvbuf[BUFSIZE];
     memset(&recvbuf, '\0', sizeof(recvbuf));
 
     buf = malloc(sizeof("LOCK") + strlen(cxn->resource));
+	if (buf == NULL)
+		return false;
+
     len = sprintf(buf, "LOCK%s", cxn->resource);
 
     if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1)
         return false;
+	/* We don't use the buffer again so we can clear it. */
+	free(buf);
     if (recvfrom(cxn->SocketFD, recvbuf, BUFSIZE, 0, NULL, NULL) == -1)
         return false;
     if (strcmp(recvbuf, "ok") == 0) {
@@ -133,15 +147,17 @@ void Unlock(struct Connection* cxn) {
     /* Lock our mutex and set the close to 1 to indicate we're done
      * with the resource.
      */
-    pthread_mutex_lock(cxn->mutex);
+	if (pthread_mutex_lock(cxn->mutex) != 0)
+		perror("Locking mutex: ");
     cxn->close = true;
-    pthread_mutex_unlock(cxn->mutex);
+	if (pthread_mutex_unlock(cxn->mutex) != 0)
+		perror("Unlocking mutex:");
     /* Wait for our thread to join and then return */
     pthread_join(*(cxn->heartbeatthread), NULL);
 }
 
 void* heartbeat(void* resource) {
-    int len, len2;
+    size_t len, len2;
     char* buf;
     char* buf2;
 
@@ -152,7 +168,6 @@ void* heartbeat(void* resource) {
         return NULL;
 
     if (cxn->resource == NULL) {
-        puts("null");
         return NULL;
     }
 
@@ -166,18 +181,27 @@ void* heartbeat(void* resource) {
     len2 = sprintf(buf2, "UNLOCK%s", cxn->resource);
 
     while (1) {
-        pthread_mutex_lock(cxn->mutex);
+		if (pthread_mutex_lock(cxn->mutex) != 0)
+			perror("Locking mutex: ");
         if (cxn->close) {
             if (sendto(cxn->SocketFD, buf2, len2, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
                 free(buf);
-                return NULL;
+                free(buf2);
+				if (pthread_mutex_unlock(cxn->mutex) != 0)
+					perror("Unlocking mutex:");
+				return NULL;
             }
-            free(buf);
-            return NULL;
+			free(buf);
+			free(buf2);
+			if (pthread_mutex_unlock(cxn->mutex) != 0)
+				perror("Unlocking mutex:");
+			return NULL;
         }
-        pthread_mutex_unlock(cxn->mutex);
+		if (pthread_mutex_unlock(cxn->mutex) != 0)
+			perror("Unlocking mutex:");
         if (sendto(cxn->SocketFD, buf, len, 0, cxn->server, sizeof(struct sockaddr)) == -1) {
-            free(buf);
+			free(buf);
+			free(buf2);
             return NULL;
         }
         sleep(SPINWAIT);
