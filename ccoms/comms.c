@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,9 +28,6 @@
 #define SPINWAIT 3
 #endif
 
-#define bool int
-#define true 1
-#define false 0
 
 struct Connection {
     int SocketFD;
