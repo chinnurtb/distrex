@@ -3,7 +3,7 @@
  [
   {description, "A distributed Mutex server."},
   {vsn, "1"},
-  {registered, []},
+  {registered, [socket_loop]},
   {applications, [
                   kernel,
                   stdlib
